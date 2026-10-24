@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#0b0912">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="ScoreLab">
+<title>ScoreLab — Análise e Sinais</title>
+<script src="https://cdn.tailwindcss.com/3.4.17"></script>
+<style>
+:root{--bg:#0b0912;--panel:#12101c;--line:rgba(109,40,217,.35);--pur:#6d28d9;--pur2:#8b5cf6;--blue:#38bdf8;--grn:#22c55e;--yel:#eab308;--red:#ef4444}
+html,body{background:var(--bg);color:#e5e7eb;font-family:ui-sans-serif,system-ui,"Segoe UI",Roboto,sans-serif}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:16px;box-shadow:0 0 18px rgba(109,40,217,.12)}
+.bar{height:8px;border-radius:9px;background:#1f1b30;overflow:hidden}.bar>i{display:block;height:100%;border-radius:9px}
+.nav{display:flex;align-items:center;gap:.6rem;padding:.65rem .9rem;border-radius:12px;color:#9ca3af;white-space:nowrap;font-size:.9rem;border:1px solid transparent}
+.nav.on{color:#fff;background:rgba(109,40,217,.25);border-color:var(--line);box-shadow:0 0 14px rgba(109,40,217,.35)}
+.btn{background:var(--pur);color:#fff;border-radius:12px;padding:.6rem 1rem;font-weight:700;font-size:.85rem;transition:.15s;box-shadow:0 0 14px rgba(109,40,217,.5)}
+.btn:hover{background:var(--pur2)}.btn:active{transform:scale(.97)}
+.chip{padding:.4rem .8rem;border-radius:999px;border:1px solid var(--line);font-size:.8rem;color:#c4b5fd;background:#171329}
+.chip.on{background:var(--pur);color:#fff}
+.hm{border-radius:10px;padding:.7rem .4rem;text-align:center;font-weight:700;font-size:.9rem}
+.g{background:rgba(34,197,94,.2);color:#4ade80;border:1px solid rgba(34,197,94,.5)}
+.y{background:rgba(234,179,8,.18);color:#facc15;border:1px solid rgba(234,179,8,.5)}
+.r{background:rgba(239,68,68,.18);color:#f87171;border:1px solid rgba(239,68,68,.5)}
+input,select{background:#171329;border:1px solid var(--line);border-radius:10px;padding:.55rem .7rem;width:100%;color:#fff;font-size:.9rem}
+input[type=range]{padding:0;accent-color:#8b5cf6}
+#toast{position:fixed;left:50%;bottom:24px;transform:translate(-50%,120px);background:#1a1530;border:1px solid var(--pur2);box-shadow:0 0 22px rgba(139,92,246,.6);padding:.8rem 1.2rem;border-radius:14px;transition:.3s;z-index:50;font-weight:600;max-width:92vw}
+#toast.show{transform:translate(-50%,0)}
+.pulse{animation:p 1.4s infinite}@keyframes p{50%{opacity:.35}}
+@media(prefers-reduced-motion:reduce){.pulse{animation:none}}
+</style>
+</head>
+<body>
+<div class="min-h-screen lg:flex">
+  <aside class="hidden lg:flex flex-col w-60 shrink-0 p-4 gap-2 border-r" style="border-color:var(--line);background:#0e0b17">
+    <div class="px-2 pb-4 text-xl font-extrabold tracking-tight">Score<span style="color:var(--pur2)">Lab</span></div>
+    <div id="sideNav" class="flex flex-col gap-1"></div>
+    <p class="mt-auto text-[11px] text-gray-500 px-2">Dados de demonstração. Aposte com responsabilidade; +18.</p>
+  </aside>
+  <div class="flex-1 min-w-0">
+    <header class="sticky top-0 z-20 backdrop-blur border-b px-4 py-3" style="border-color:var(--line);background:rgba(11,9,18,.88)">
+      <div class="flex items-center justify-between">
+        <h1 id="title" class="font-bold text-lg"></h1>
+        <button class="btn" onclick="upd()">Atualizar</button>
+      </div>
+      <nav id="topNav" class="lg:hidden flex gap-2 overflow-x-auto pt-3 -mx-1 px-1"></nav>
+    </header>
+    <main id="view" class="p-4 md:p-6 max-w-6xl mx-auto"></main>
+  </div>
+</div>
+<div id="toast" role="status" aria-live="polite"></div>
+
+<script>
+const BRAND='SCORELAB';
+const $=s=>document.querySelector(s);
+const fac=n=>n<2?1:n*fac(n-1);
+const pois=(l,k)=>Math.exp(-l)*Math.pow(l,k)/fac(k);
+let M=[
+ {h:'Real Madrid',a:'Manchester City',lg:'Champions League',t:'Hoje 16:00',xh:1.45,xa:1.62,atkH:79,atkA:88,defH:74,defA:83,p:[.31,.26,.43]},
+ {h:'Atlético Madrid',a:'Real Madrid',lg:'La Liga',t:'Amanhã 17:00',xh:1.18,xa:1.51,atkH:68,atkA:79,defH:81,defA:74,p:[.33,.29,.38]},
+ {h:'Flamengo',a:'Palmeiras',lg:'Brasileirão',t:'Dom 16:00',xh:1.38,xa:1.12,atkH:76,atkA:72,defH:73,defA:78,p:[.42,.28,.30]},
+ {h:'Bayern',a:'Dortmund',lg:'Bundesliga',t:'Sáb 14:30',xh:2.15,xa:1.35,atkH:90,atkA:77,defH:72,defA:64,p:[.58,.2,.22]}
+];
+const mk=m=>{const t=m.xh+m.xa;
+ const o25=1-(pois(t,0)+pois(t,1)+pois(t,2));
+ const btts=(1-Math.exp(-m.xh))*(1-Math.exp(-m.xa));
+ const rows=[['Vitória '+m.h,m.p[0]],['Empate',m.p[1]],['Vitória '+m.a,m.p[2]],['Over 2.5 Gols',o25],['Ambas Marcam - Sim',btts]];
+ const d=[-.03,.02,.04,-.02,.03];
+ return rows.map((r,i)=>{const mp=Math.min(.95,r[1]+d[i]);const fair=1/r[1];const house=1/mp/1.05;return{n:r[0],pm:r[1],pk:mp,fair,house,v:house/fair-1}})};
+const heat={ligas:['Brasileirão','Liga MX','Premier League','La Liga','Bundesliga'],mercados:['TAC','BTTS','DC','O2.5','U3.5'],
+ d:[[72,48,81,41,66],[58,61,77,56,52],[66,57,79,63,44],[61,43,84,47,60],[54,69,72,71,39]]};
+let S=[
+ {g:'Manchester City vs Real Madrid',m:'Over 2.5 Gols',o:1.85,c:88,xg:2.9,s:'1 a 2 Unidades',tag:'Pré-jogo',r:['xG combinado de 2.9','Os dois ataques acima de 78 no rating','Últimos 5 confrontos: 4 com 3+ gols']},
+ {g:'Flamengo vs Palmeiras',m:'Ambas Marcam - SIM',o:1.80,c:74,xg:2.5,s:'1 Unidade',tag:'Pré-jogo',r:['Probabilidade do modelo de 56%','Palmeiras sofreu gol em 7 dos últimos 9','Flamengo marcou em 12 jogos seguidos']},
+ {g:'Bayern vs Dortmund',m:'Over 1.5 Gol FT',o:1.30,c:93,xg:3.5,s:'2 a 3 Unidades',tag:'Pré-jogo',r:['xG combinado de 3.5','Bayern com ataque 90 de rating','Over 1.5 bateu em 94% dos jogos do Bayern em casa']},
+ {g:'Atlético Madrid vs Real Madrid',m:'Gols no HT',o:2.10,c:69,xg:2.7,s:'0,5 a 1 Unidade',tag:'Live',r:['Pressão do Real acima de 60% nos últimos 10 min','4 finalizações no alvo no 1º tempo','Odd com valor de +6% sobre a odd justa']}
+];
+const txt=s=>`🎯 ALERTA ${BRAND} 🎯\n⚽ Jogo: ${s.g}\n📊 Mercado: ${s.m}\n💡 Odd Mínima: ${(+s.o).toFixed(2)}\n📈 Confiabilidade: ${s.c}%${s.xg?` (xG combinado: ${s.xg})`:''}\n💵 Stake Recomendada: ${s.s}`;
+const pct=x=>(x*100).toFixed(0)+'%';
+const bar=(l,v,c,suf='%')=>`<div class="mb-3"><div class="flex justify-between text-xs text-gray-400 mb-1"><span>${l}</span><b class="text-gray-200">${v}${suf}</b></div><div class="bar"><i style="width:${Math.min(100,v)}%;background:${c}"></i></div></div>`;
+
+function toast(msg){const t=$('#toast');t.textContent=msg;t.classList.add('show');clearTimeout(toast.id);toast.id=setTimeout(()=>t.classList.remove('show'),2600)}
+async function copy(text){
+ try{await navigator.clipboard.writeText(text)}catch(e){const a=document.createElement('textarea');a.value=text;a.style.position='fixed';a.style.opacity=0;document.body.appendChild(a);a.select();try{document.execCommand('copy')}catch(_){toast('Não foi possível copiar');}a.remove()}
+ toast('✅ Entrada copiada! Cole no WhatsApp ou Telegram')}
+window.cp=i=>copy(txt(S[i]));
+
+const views={pre:'Análise pré-jogo',heat:'Mapa de desempenho',live:'Live momentum',sig:'Copiar sinais',cfg:'Atualizar dados'};
+const icons={pre:'📊',heat:'🔥',live:'📈',sig:'📋',cfg:'⚙️'};
+let cur='sig',sel=0;
+function nav(){const h=Object.keys(views).map(k=>`<button class="nav ${k==cur?'on':''}" onclick="go('${k}')"><span>${icons[k]}</span>${views[k]}</button>`).join('');$('#sideNav').innerHTML=h;$('#topNav').innerHTML=h}
+function go(v){cur=v;stopLive();nav();$('#title').textContent=views[v];$('#view').innerHTML='';({pre:vPre,heat:vHeat,live:vLive,sig:vSig,cfg:vCfg})[v]();scrollTo(0,0)}
+
+function vPre(){const m=M[sel],t=mk(m),df=m.xh-m.xa;
+ $('#view').innerHTML=`<div class="flex gap-2 overflow-x-auto pb-3">${M.map((x,i)=>`<button class="chip ${i==sel?'on':''}" onclick="sel=${i};vPre()">${x.h} x ${x.a}</button>`).join('')}</div>
+ <div class="grid md:grid-cols-2 gap-4">
+  <section class="card p-5 md:col-span-2"><div class="text-xs text-gray-400">${m.lg} · ${m.t}</div>
+   <div class="flex items-center justify-between mt-2 text-xl md:text-3xl font-extrabold"><span>${m.h}</span><span class="text-gray-500 text-base">vs</span><span class="text-right">${m.a}</span></div></section>
+  <section class="card p-5"><h2 class="font-bold mb-4">Expected Goals (xG)</h2>
+   ${bar(m.h,m.xh*50,'var(--pur2)','')}${bar(m.a,m.xa*50,'var(--blue)','')}
+   <div class="flex justify-between text-sm"><span>xG: <b>${m.xh.toFixed(2)}</b> x <b>${m.xa.toFixed(2)}</b></span><span>Diferencial: <b style="color:${df>=0?'var(--pur2)':'var(--blue)'}">${df>0?'+':''}${df.toFixed(2)}</b></span></div></section>
+  <section class="card p-5"><h2 class="font-bold mb-4">Ratings</h2>
+   ${bar('Strong Attack — '+m.h,m.atkH,'var(--pur2)')}${bar('Strong Attack — '+m.a,m.atkA,'var(--blue)')}
+   ${bar('Defense — '+m.h,m.defH,'var(--grn)')}${bar('Defense — '+m.a,m.defA,'var(--grn)')}</section>
+  <section class="card p-5 md:col-span-2"><h2 class="font-bold mb-4">Probabilidade do modelo x mercado</h2>
+   <div class="grid md:grid-cols-2 gap-x-8">${t.map(r=>`<div class="mb-3"><div class="flex justify-between text-xs text-gray-400 mb-1"><span>${r.n}</span><span>Modelo <b class="text-white">${pct(r.pm)}</b> · Mercado <b class="text-white">${pct(r.pk)}</b></span></div><div class="bar mb-1"><i style="width:${r.pm*100}%;background:var(--pur2)"></i></div><div class="bar"><i style="width:${r.pk*100}%;background:var(--blue)"></i></div></div>`).join('')}</div></section>
+  <section class="card p-5 md:col-span-2 overflow-x-auto"><h2 class="font-bold mb-3">Odds da casa x odds justas</h2>
+   <table class="w-full text-sm min-w-[480px]"><thead class="text-gray-400 text-xs text-left"><tr><th class="py-2">Mercado</th><th>Odd da casa</th><th>Odd justa</th><th>Valor</th></tr></thead><tbody>
+   ${t.map(r=>`<tr class="border-t" style="border-color:#241e3a"><td class="py-2.5">${r.n}</td><td>${r.house.toFixed(2)}</td><td>${r.fair.toFixed(2)}</td><td><b style="color:${r.v>0?'var(--grn)':'var(--red)'}">${r.v>0?'+':''}${(r.v*100).toFixed(1)}%</b></td></tr>`).join('')}</tbody></table></section>
+ </div>`}
+
+function vHeat(){const c=v=>v>=65?'g':v>=50?'y':'r';
+ $('#view').innerHTML=`<section class="card p-5"><div class="flex flex-wrap gap-3 text-xs mb-4"><span class="hm g">Alta ≥ 65%</span><span class="hm y">Média 50–64%</span><span class="hm r">Baixa &lt; 50%</span></div>
+ <div class="overflow-x-auto"><div class="grid gap-2 min-w-[520px]" style="grid-template-columns:140px repeat(5,1fr)">
+ <div></div>${heat.mercados.map(x=>`<div class="text-center text-xs text-gray-400 self-end">${x}</div>`).join('')}
+ ${heat.ligas.map((l,i)=>`<div class="self-center text-sm font-semibold">${l}</div>`+heat.d[i].map(v=>`<div class="hm ${c(v)}">${v}%</div>`).join('')).join('')}
+ </div></div>
+ <p class="text-xs text-gray-500 mt-4">TAC, BTTS (ambas marcam), DC (dupla chance), O2.5 (mais de 2,5 gols) e U3.5 (menos de 3,5 gols). Percentuais de acerto históricos, dados de exemplo.</p></section>`}
+
+let tm=null,P=[];
+function stopLive(){clearInterval(tm);tm=null}
+function step(){const l=P.length?P[P.length-1]:0;let n=l*.75+(Math.random()-.5)*70+(P.length>40?10:0);P.push(Math.max(-100,Math.min(100,n)))}
+function vLive(){P=[];for(let i=0;i<35;i++)step();
+ $('#view').innerHTML=`<section class="card p-5"><div class="flex flex-wrap justify-between gap-3 mb-3"><div><div class="font-bold">Real Madrid x Manchester City</div><div class="text-xs text-gray-400" id="lmin"></div></div>
+ <div class="flex gap-2"><button class="btn" id="lbtn" onclick="lt()">Pausar</button><button class="btn" style="background:#2a2445;box-shadow:none" onclick="vLive()">Reiniciar</button></div></div>
+ <canvas id="cv" class="w-full" style="height:260px"></canvas>
+ <div class="flex justify-between text-xs mt-2"><span style="color:var(--pur2)">▲ Real Madrid</span><span style="color:var(--blue)">▼ Manchester City</span></div>
+ <div id="ldom" class="mt-4"></div></section>`;
+ draw();tm=setInterval(()=>{if(P.length>=90){stopLive();$('#lbtn').textContent='Fim';return}step();draw()},900)}
+window.lt=()=>{const b=$('#lbtn');if(P.length>=90)return;if(tm){stopLive();b.textContent='Retomar'}else{tm=setInterval(()=>{if(P.length>=90){stopLive();return}step();draw()},900);b.textContent='Pausar'}};
+function draw(){const cv=$('#cv');if(!cv)return;const r=devicePixelRatio||1,w=cv.clientWidth,h=cv.clientHeight;cv.width=w*r;cv.height=h*r;const x=cv.getContext('2d');x.scale(r,r);
+ x.strokeStyle='#2a2445';x.beginPath();x.moveTo(0,h/2);x.lineTo(w,h/2);x.stroke();
+ x.fillStyle='#6b7280';x.font='10px sans-serif';[0,15,30,45,60,75,90].forEach(m=>x.fillText(m+"'",m/90*(w-18),h-2));
+ const bw=w/90;P.forEach((v,i)=>{x.fillStyle=v>=0?'#8b5cf6':'#38bdf8';const bh=Math.abs(v)/100*(h/2-14);x.shadowColor=x.fillStyle;x.shadowBlur=6;x.fillRect(i*bw+1,v>=0?h/2-bh:h/2,bw-2,bh)});
+ x.shadowBlur=0;
+ const L=P.slice(-10),hm=L.reduce((a,v)=>a+Math.max(v,0),0),aw=L.reduce((a,v)=>a-Math.min(v,0),0),dh=hm+aw?Math.round(hm/(hm+aw)*100):50;
+ $('#lmin').textContent=`Minuto ${P.length}' · ${P.length>=90?'Encerrado':'em andamento (simulação)'}`;
+ $('#ldom').innerHTML=`<div class="text-xs text-gray-400 mb-1">Domínio nos últimos 10 minutos</div><div class="flex h-3 rounded-full overflow-hidden"><i style="width:${dh}%;background:var(--pur2)"></i><i style="width:${100-dh}%;background:var(--blue)"></i></div><div class="flex justify-between text-sm mt-1"><b>${dh}%</b><b>${100-dh}%</b></div>`}
+
+function vSig(){
+ $('#view').innerHTML=`<div class="grid lg:grid-cols-3 gap-4">
+ <div class="lg:col-span-2 flex flex-col gap-4"><h2 class="font-bold">Sinais ativos</h2>
+ ${S.map((s,i)=>`<article class="card p-5"><div class="flex justify-between items-start gap-3"><div><span class="chip ${s.tag=='Live'?'on':''}">${s.tag}</span><h3 class="font-bold mt-2">${s.g}</h3><div class="text-lg font-extrabold" style="color:var(--pur2)">${s.m}</div></div>
+  <div class="text-right"><div class="text-xs text-gray-400">Odd mínima</div><div class="text-2xl font-extrabold">${s.o.toFixed(2)}</div></div></div>
+  <div class="mt-3">${bar('Confiabilidade',s.c,s.c>=85?'var(--grn)':s.c>=70?'var(--yel)':'var(--red)')}</div>
+  <ul class="text-sm text-gray-300 list-disc pl-5 space-y-1">${s.r.map(x=>`<li>${x}</li>`).join('')}</ul>
+  <div class="flex flex-wrap items-center justify-between gap-3 mt-4"><span class="text-sm text-gray-400">Stake: <b class="text-white">${s.s}</b> · xG ${s.xg}</span><button class="btn" onclick="cp(${i})">COPIAR ENTRADA</button></div></article>`).join('')}</div>
+ <aside class="card p-5 h-fit"><h2 class="font-bold mb-3">Criar sinal</h2>
+  <label class="text-xs text-gray-400">Jogo</label><select id="cg" class="mb-3">${M.map((m,i)=>`<option value="${i}">${m.h} vs ${m.a}</option>`).join('')}</select>
+  <label class="text-xs text-gray-400">Mercado</label><select id="cm" class="mb-3">${['Over 1.5 Gol FT','Over 2.5 Gols','Ambas Marcam - SIM','Gols no HT','Dupla Chance 1X','Under 3.5 Gols'].map(x=>`<option>${x}</option>`).join('')}</select>
+  <label class="text-xs text-gray-400">Odd mínima</label><input id="co" type="number" step="0.01" min="1.01" value="1.85" class="mb-3">
+  <label class="text-xs text-gray-400 flex justify-between">Confiabilidade <b id="cv2" class="text-white">80%</b></label><input id="cc" type="range" min="50" max="99" value="80" class="mb-3" oninput="cv2.textContent=this.value+'%'">
+  <label class="text-xs text-gray-400">Stake</label><select id="cs" class="mb-4"><option>0,5 Unidade</option><option>1 Unidade</option><option selected>1 a 2 Unidades</option><option>2 a 3 Unidades</option></select>
+  <button class="btn w-full" onclick="gen()">Gerar &amp; Copiar Texto</button>
+  <textarea id="prev" readonly rows="7" class="mt-3 w-full text-xs" style="background:#171329;border:1px solid var(--line);border-radius:10px;padding:.6rem;color:#d1d5db" placeholder="A prévia do texto aparece aqui"></textarea></aside></div>`}
+window.gen=()=>{const m=M[$('#cg').value],o=parseFloat($('#co').value);
+ if(!(o>1)){toast('⚠️ Informe uma odd maior que 1.00');return}
+ const s={g:`${m.h} vs ${m.a}`,m:$('#cm').value,o,c:$('#cc').value,xg:(m.xh+m.xa).toFixed(1),s:$('#cs').value};
+ const t=txt(s);$('#prev').value=t;copy(t)};
+
+const LG={BSA:'Brasileirão',CL:'Champions League',PL:'Premier League',PD:'La Liga',BL1:'Bundesliga'};
+const ls={get(k){try{return localStorage.getItem(k)}catch(e){return null}},set(k,v){try{localStorage.setItem(k,v)}catch(e){}}};
+try{const c=JSON.parse(ls.get('sl_data')||'null');if(c&&c.M&&c.M.length){M=c.M;S=c.S}}catch(e){}
+async function api(path,key){const r=await fetch('https://api.football-data.org/v4/'+path,{headers:{'X-Auth-Token':key}});
+ if(r.status==429)throw new Error('Limite de requisições atingido. Aguarde 1 minuto e tente de novo.');
+ if(r.status==401||r.status==403)throw new Error('Chave inválida ou sem acesso a esta liga no seu plano.');
+ if(!r.ok)throw new Error('Erro '+r.status);return r.json()}
+function model(h,a,avg){const aH=h.gf/h.p/avg,dH=h.ga/h.p/avg,aA=a.gf/a.p/avg,dA=a.ga/a.p/avg;
+ const xh=+(avg*1.1*aH*dA).toFixed(2),xa=+(avg*.92*aA*dH).toFixed(2);let pH=0,pD=0,pA=0;
+ for(let i=0;i<=7;i++)for(let j=0;j<=7;j++){const p=pois(xh,i)*pois(xa,j);i>j?pH+=p:i==j?pD+=p:pA+=p}
+ const s=pH+pD+pA,R=v=>Math.round(Math.max(30,Math.min(98,60+v*60)));
+ return{xh,xa,atkH:R(aH-1),atkA:R(aA-1),defH:R(1-dH),defA:R(1-dA),p:[pH/s,pD/s,pA/s]}}
+function mkSig(ms){const L=[];ms.forEach(m=>{const t=m.xh+m.xa,o15=1-(pois(t,0)+pois(t,1)),o25=o15-pois(t,2),bt=(1-Math.exp(-m.xh))*(1-Math.exp(-m.xa));
+ [['Over 1.5 Gol FT',o15],['Over 2.5 Gols',o25],['Ambas Marcam - SIM',bt]].forEach(([n,p])=>{if(p>=.55)L.push({g:`${m.h} vs ${m.a}`,m:n,o:Math.max(1.05,1/p*1.05),c:Math.round(p*100),xg:+t.toFixed(1),s:p>=.8?'2 a 3 Unidades':p>=.65?'1 a 2 Unidades':'0,5 a 1 Unidade',tag:'Pré-jogo',
+  r:[`${m.lg} · ${m.t}`,`xG estimado ${m.xh.toFixed(2)} x ${m.xa.toFixed(2)} (total ${t.toFixed(1)})`,`Probabilidade do modelo ${Math.round(p*100)}%; odd justa ${(1/p).toFixed(2)}, entre só acima de ${(1/p*1.05).toFixed(2)}`]})})});
+ return L.sort((a,b)=>b.c-a.c).slice(0,8)}
+async function upd(){const key=ls.get('sl_key');if(!key){go('cfg');toast('Informe sua chave da API primeiro');return}
+ const codes=JSON.parse(ls.get('sl_lg')||'["BSA","CL"]'),say=t=>{const e=$('#st');if(e)e.textContent=t},out=[],errs=[];
+ const d=x=>x.toISOString().slice(0,10),a=new Date(),b=new Date(Date.now()+7*864e5);
+ toast('Atualizando dados...');
+ for(const c of codes){try{say('Buscando '+LG[c]+'...');
+  const tb=await api(`competitions/${c}/standings`,key),mt=await api(`competitions/${c}/matches?dateFrom=${d(a)}&dateTo=${d(b)}`,key);
+  const T={};let g=0,n=0;((tb.standings.find(s=>s.type=='TOTAL')||tb.standings[0]).table).forEach(r=>{T[r.team.id]={p:r.playedGames,gf:r.goalsFor,ga:r.goalsAgainst};g+=r.goalsFor;n+=r.playedGames});
+  const avg=g/n||1.3;
+  mt.matches.filter(m=>['SCHEDULED','TIMED'].includes(m.status)).forEach(m=>{const h=T[m.homeTeam.id],v=T[m.awayTeam.id];if(!h||!v||h.p<3||v.p<3)return;
+   out.push({h:m.homeTeam.shortName||m.homeTeam.name,a:m.awayTeam.shortName||m.awayTeam.name,lg:LG[c],ts:m.utcDate,t:new Date(m.utcDate).toLocaleString('pt-BR',{weekday:'short',day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}),...model(h,v,avg/2)})})
+ }catch(e){errs.push(LG[c]+': '+e.message)}}
+ if(!out.length){say('Nenhum jogo encontrado. '+errs.join(' | '));toast('⚠️ Sem jogos para os próximos 7 dias');return}
+ out.sort((x,y)=>x.ts.localeCompare(y.ts));M=out.slice(0,12);S=mkSig(M);sel=0;
+ ls.set('sl_data',JSON.stringify({M,S}));ls.set('sl_time',String(Date.now()));
+ go('sig');toast(`✅ ${M.length} jogos e ${S.length} sinais atualizados`+(errs.length?' (algumas ligas falharam)':''))}
+function vCfg(){const l=JSON.parse(ls.get('sl_lg')||'["BSA","CL"]'),t=ls.get('sl_time');
+ $('#view').innerHTML=`<section class="card p-5 max-w-xl"><h2 class="font-bold mb-3">Chave da football-data.org</h2>
+ <input id="ky" type="password" placeholder="Cole sua chave aqui" value="${ls.get('sl_key')||''}" class="mb-3">
+ <div class="text-xs text-gray-400 mb-2">Ligas</div><div class="flex flex-wrap gap-2 mb-4">${Object.entries(LG).map(([k,v])=>`<label class="chip"><input type="checkbox" class="lg" value="${k}" ${l.includes(k)?'checked':''} style="width:auto;margin-right:.4rem">${v}</label>`).join('')}</div>
+ <button class="btn w-full" onclick="saveCfg()">Salvar e atualizar</button>
+ <p id="st" class="text-sm text-gray-300 mt-3">${t?'Última atualização: '+new Date(+t).toLocaleString('pt-BR'):'Ainda não atualizado: mostrando dados de exemplo.'}</p>
+ <p class="text-xs text-gray-500 mt-2">A chave fica salva só neste aparelho. Plano grátis: 10 requisições por minuto; cada liga usa 2. O xG é estimado pela média de gols de cada time. Mapa de desempenho e Live seguem como exemplo.</p></section>`}
+window.saveCfg=()=>{const k=$('#ky').value.trim(),l=[...document.querySelectorAll('.lg:checked')].map(x=>x.value);
+ if(!k){toast('⚠️ Cole a chave da API');return}if(!l.length){toast('⚠️ Escolha ao menos uma liga');return}
+ ls.set('sl_key',k);ls.set('sl_lg',JSON.stringify(l));upd()};
+
+nav();go('sig');
+if('serviceWorker' in navigator)addEventListener('load',()=>navigator.serviceWorker.register('sw.js').catch(()=>{}));
+addEventListener('resize',()=>{if(cur=='live')draw()});
+</script>
+</body>
+</html>
