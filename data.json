@@ -1,0 +1,30 @@
+{
+ "updated": "2026-10-25T07:56:41.376640+00:00",
+ "leagues": {
+  "BSA": {
+   "avg": 1.3,
+   "matches": [],
+   "error": "liga fora do plano grátis"
+  },
+  "CL": {
+   "avg": 1.3,
+   "matches": [],
+   "error": "liga fora do plano grátis"
+  },
+  "PL": {
+   "avg": 1.3,
+   "matches": [],
+   "error": "liga fora do plano grátis"
+  },
+  "PD": {
+   "avg": 1.3,
+   "matches": [],
+   "error": "liga fora do plano grátis"
+  },
+  "BL1": {
+   "avg": 1.3,
+   "matches": [],
+   "error": "liga fora do plano grátis"
+  }
+ }
+}
