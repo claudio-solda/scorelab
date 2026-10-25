@@ -166,10 +166,6 @@ window.gen=()=>{const m=M[$('#cg').value],o=parseFloat($('#co').value);
 const LG={BSA:'Brasileirão',CL:'Champions League',PL:'Premier League',PD:'La Liga',BL1:'Bundesliga'};
 const ls={get(k){try{return localStorage.getItem(k)}catch(e){return null}},set(k,v){try{localStorage.setItem(k,v)}catch(e){}}};
 try{const c=JSON.parse(ls.get('sl_data')||'null');if(c&&c.M&&c.M.length){M=c.M;S=c.S}}catch(e){}
-async function api(path,key){let r;try{r=await fetch('https://api.football-data.org/v4/'+path,{headers:{'X-Auth-Token':key}})}catch(e){throw new Error('Não foi possível conectar à API (sem internet ou bloqueio do navegador).')}
- if(r.status==429)throw new Error('Limite de requisições atingido. Aguarde 1 minuto e tente de novo.');
- if(r.status==401||r.status==403)throw new Error('Chave inválida ou sem acesso a esta liga no seu plano.');
- if(!r.ok)throw new Error('Erro '+r.status);return r.json()}
 function model(h,a,avg){const aH=h.gf/h.p/avg,dH=h.ga/h.p/avg,aA=a.gf/a.p/avg,dA=a.ga/a.p/avg;
  const xh=+(avg*1.1*aH*dA).toFixed(2),xa=+(avg*.92*aA*dH).toFixed(2);let pH=0,pD=0,pA=0;
  for(let i=0;i<=7;i++)for(let j=0;j<=7;j++){const p=pois(xh,i)*pois(xa,j);i>j?pH+=p:i==j?pD+=p:pA+=p}
@@ -179,33 +175,32 @@ function mkSig(ms){const L=[];ms.forEach(m=>{const t=m.xh+m.xa,o15=1-(pois(t,0)+
  [['Over 1.5 Gol FT',o15],['Over 2.5 Gols',o25],['Ambas Marcam - SIM',bt]].forEach(([n,p])=>{if(p>=.55)L.push({g:`${m.h} vs ${m.a}`,m:n,o:Math.max(1.05,1/p*1.05),c:Math.round(p*100),xg:+t.toFixed(1),s:p>=.8?'2 a 3 Unidades':p>=.65?'1 a 2 Unidades':'0,5 a 1 Unidade',tag:'Pré-jogo',
   r:[`${m.lg} · ${m.t}`,`xG estimado ${m.xh.toFixed(2)} x ${m.xa.toFixed(2)} (total ${t.toFixed(1)})`,`Probabilidade do modelo ${Math.round(p*100)}%; odd justa ${(1/p).toFixed(2)}, entre só acima de ${(1/p*1.05).toFixed(2)}`]})})});
  return L.sort((a,b)=>b.c-a.c).slice(0,8)}
-async function upd(){const key=ls.get('sl_key');if(!key){go('cfg');toast('Informe sua chave da API primeiro');return}
- const codes=JSON.parse(ls.get('sl_lg')||'["BSA","CL"]'),say=t=>{const e=$('#st');if(e)e.textContent=t},out=[],errs=[];
- const d=x=>x.toISOString().slice(0,10),a=new Date(),b=new Date(Date.now()+9*864e5);
- toast('Atualizando dados...');
- for(const c of codes){try{say('Buscando '+LG[c]+'...');
-  const tb=await api(`competitions/${c}/standings`,key),mt=await api(`competitions/${c}/matches?dateFrom=${d(a)}&dateTo=${d(b)}`,key);
-  const T={};let g=0,n=0;((tb.standings.find(s=>s.type=='TOTAL')||tb.standings[0]).table).forEach(r=>{T[r.team.id]={p:r.playedGames,gf:r.goalsFor,ga:r.goalsAgainst};g+=r.goalsFor;n+=r.playedGames});
-  const avg=g/n||1.3;
-  mt.matches.filter(m=>['SCHEDULED','TIMED'].includes(m.status)).forEach(m=>{const h=T[m.homeTeam.id],v=T[m.awayTeam.id];if(!h||!v||h.p<3||v.p<3)return;
-   out.push({h:m.homeTeam.shortName||m.homeTeam.name,a:m.awayTeam.shortName||m.awayTeam.name,lg:LG[c],ts:m.utcDate,t:new Date(m.utcDate).toLocaleString('pt-BR',{weekday:'short',day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}),...model(h,v,avg)})})
- }catch(e){errs.push(LG[c]+': '+e.message)}}
- if(!out.length){if(errs.length){say('Erro: '+errs.join(' | '));toast('⚠️ '+errs[0])}else{say('Nenhum jogo agendado nos próximos 9 dias nas ligas escolhidas.');toast('⚠️ Sem jogos nos próximos dias')}return}
- out.sort((x,y)=>x.ts.localeCompare(y.ts));M=out.slice(0,12);S=mkSig(M);sel=0;
- ls.set('sl_data',JSON.stringify({M,S}));ls.set('sl_time',String(Date.now()));
- go('sig');toast(`✅ ${M.length} jogos e ${S.length} sinais atualizados`+(errs.length?' (algumas ligas falharam)':''))}
+async function upd(silent){
+ const say=t=>{const e=$('#st');if(e)e.textContent=t},out=[],errs=[];
+ if(!silent)toast('Atualizando dados...');
+ try{
+  const r=await fetch('data.json?t='+Date.now(),{cache:'no-store'});
+  if(!r.ok)throw new Error('Ainda não há dados no servidor. Rode o robô na aba Actions do GitHub.');
+  const j=await r.json(),codes=JSON.parse(ls.get('sl_lg')||'["BSA","CL"]');
+  codes.forEach(c=>{const L=j.leagues[c];if(!L){errs.push(LG[c]+': sem dados');return}
+   if(L.error){errs.push(LG[c]+': '+L.error);return}
+   L.matches.forEach(m=>{const h={p:m.hs[0],gf:m.hs[1],ga:m.hs[2]},v={p:m.as[0],gf:m.as[1],ga:m.as[2]};if(h.p<3||v.p<3)return;
+    out.push({h:m.h,a:m.a,lg:LG[c],ts:m.ts,t:new Date(m.ts).toLocaleString('pt-BR',{weekday:'short',day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}),...model(h,v,L.avg)})})});
+  if(!out.length){const m=errs.length?'Erro: '+errs.join(' | '):'Nenhum jogo agendado nos próximos dias nas ligas escolhidas.';say(m);if(!silent)toast('⚠️ '+(errs[0]||'Sem jogos nos próximos dias'));return}
+  out.sort((x,y)=>x.ts.localeCompare(y.ts));M=out.slice(0,12);S=mkSig(M);sel=0;
+  ls.set('sl_data',JSON.stringify({M,S}));ls.set('sl_time',String(Date.parse(j.updated)||Date.now()));
+  go(silent?cur:'sig');if(!silent)toast(`✅ ${M.length} jogos e ${S.length} sinais atualizados`+(errs.length?' (algumas ligas falharam)':''))
+ }catch(e){say(e.message);if(!silent)toast('⚠️ '+e.message)}}
 function vCfg(){const l=JSON.parse(ls.get('sl_lg')||'["BSA","CL"]'),t=ls.get('sl_time');
- $('#view').innerHTML=`<section class="card p-5 max-w-xl"><h2 class="font-bold mb-3">Chave da football-data.org</h2>
- <input id="ky" type="password" placeholder="Cole sua chave aqui" value="${ls.get('sl_key')||''}" class="mb-3">
- <div class="text-xs text-gray-400 mb-2">Ligas</div><div class="flex flex-wrap gap-2 mb-4">${Object.entries(LG).map(([k,v])=>`<label class="chip"><input type="checkbox" class="lg" value="${k}" ${l.includes(k)?'checked':''} style="width:auto;margin-right:.4rem">${v}</label>`).join('')}</div>
+ $('#view').innerHTML=`<section class="card p-5 max-w-xl"><h2 class="font-bold mb-3">Ligas</h2>
+ <div class="flex flex-wrap gap-2 mb-4">${Object.entries(LG).map(([k,v])=>`<label class="chip"><input type="checkbox" class="lg" value="${k}" ${l.includes(k)?'checked':''} style="width:auto;margin-right:.4rem">${v}</label>`).join('')}</div>
  <button class="btn w-full" onclick="saveCfg()">Salvar e atualizar</button>
- <p id="st" class="text-sm text-gray-300 mt-3">${t?'Última atualização: '+new Date(+t).toLocaleString('pt-BR'):'Ainda não atualizado: mostrando dados de exemplo.'}</p>
- <p class="text-xs text-gray-500 mt-2">A chave fica salva só neste aparelho. Plano grátis: 10 requisições por minuto; cada liga usa 2. O xG é estimado pela média de gols de cada time. Mapa de desempenho e Live seguem como exemplo.</p></section>`}
-window.saveCfg=()=>{const k=$('#ky').value.trim(),l=[...document.querySelectorAll('.lg:checked')].map(x=>x.value);
- if(!k){toast('⚠️ Cole a chave da API');return}if(!l.length){toast('⚠️ Escolha ao menos uma liga');return}
- ls.set('sl_key',k);ls.set('sl_lg',JSON.stringify(l));upd()};
+ <p id="st" class="text-sm text-gray-300 mt-3">${t?'Dados do servidor de '+new Date(+t).toLocaleString('pt-BR'):'Ainda sem dados do servidor: mostrando dados de exemplo.'}</p>
+ <p class="text-xs text-gray-500 mt-2">Um robô do GitHub busca jogos e classificação a cada 3 horas. O xG é estimado pela média de gols de cada time. Mapa de desempenho e Live seguem como exemplo.</p></section>`}
+window.saveCfg=()=>{const l=[...document.querySelectorAll('.lg:checked')].map(x=>x.value);
+ if(!l.length){toast('⚠️ Escolha ao menos uma liga');return}ls.set('sl_lg',JSON.stringify(l));upd()};
 
-nav();go('sig');
+nav();go('sig');upd(true);
 if('serviceWorker' in navigator)addEventListener('load',()=>navigator.serviceWorker.register('sw.js').catch(()=>{}));
 addEventListener('resize',()=>{if(cur=='live')draw()});
 </script>
